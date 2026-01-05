@@ -3,6 +3,7 @@ import { listMessages } from "@/lib/db"
 import Link from "next/link"
 import { RoomDiscovery } from "@/components/RoomDiscovery"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Suspense } from "react"
 
 interface RoomPageProps {
   params: Promise<{ roomId: string }>
@@ -48,7 +49,9 @@ export default async function RoomPage({ params }: RoomPageProps) {
 
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           <div className="space-y-6">
-            <Chat roomId={roomId} initialMessages={initialMessages} />
+            <Suspense fallback={<div>Loading chat...</div>}>
+              <Chat roomId={roomId} initialMessages={initialMessages} />
+            </Suspense>
           </div>
 
           <aside className="space-y-6">

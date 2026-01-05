@@ -10,12 +10,31 @@ export type RoomEvent =
       id: string
       content: string
       senderId: string
-      attachments?: any[]
+      attachments?: Attachment[]
       flags?: string[]
     }
-  | { type: "message-updated"; message: any }
+  | { type: "message-updated"; message: MessageUpdate }
   | { type: "message-deleted"; id: string }
-  | { type: "presence"; users: any[] }
+  | { type: "presence"; users: PresenceUser[] }
+
+type Attachment = {
+  id: string
+  name: string
+  type: "image" | "pdf"
+  url: string
+  size: number
+  previewText?: string
+  previewError?: string
+}
+
+type PresenceUser = {
+  id: string
+  name?: string
+  lastSeen: number
+  isTyping?: boolean
+}
+
+type MessageUpdate = Record<string, unknown>
 
 export function connect(roomId: string, onEvent: (event: RoomEvent) => void) {
   const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8787/ws"

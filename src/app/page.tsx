@@ -1,4 +1,5 @@
 import Chat from "@/components/Chat"
+import { Suspense } from "react"
 import { listMessages } from "@/lib/db"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { RoomDiscovery } from "@/components/RoomDiscovery"
@@ -55,7 +56,9 @@ export default async function Home() {
 
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           <div className="space-y-6">
-            <Chat roomId={roomId} initialMessages={initialMessages} />
+            <Suspense fallback={<div>Loading chat...</div>}>
+              <Chat roomId={roomId} initialMessages={initialMessages} />
+            </Suspense>
           </div>
 
           <aside className="space-y-6">

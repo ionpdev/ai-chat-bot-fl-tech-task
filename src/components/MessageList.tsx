@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import Image from "next/image"
 import type { ReactNode } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
@@ -206,9 +207,13 @@ function renderInline(text: string, query: string | undefined, keyBase: string) 
     } else if (match[2] && match[3]) {
       nodes.push(
         <span key={`${keyBase}-img-${match.index}`} className="block">
-          <img
+          <Image
             src={match[3]}
             alt={match[2]}
+            width={640}
+            height={360}
+            sizes="(max-width: 768px) 100vw, 640px"
+            unoptimized
             className="max-h-56 w-auto rounded-lg border border-slate-200/70"
             loading="lazy"
           />
@@ -760,9 +765,13 @@ export function MessageList({
               <span>{formatSize(attachment.size)}</span>
             </div>
             {attachment.type === "image" ? (
-              <img
+              <Image
                 src={attachment.url}
                 alt={attachment.name}
+                width={720}
+                height={480}
+                sizes="(max-width: 768px) 100vw, 720px"
+                unoptimized
                 className="mt-2 max-h-48 w-auto rounded-lg border border-slate-200/70"
               />
             ) : (

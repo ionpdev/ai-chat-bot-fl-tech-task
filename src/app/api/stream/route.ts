@@ -98,10 +98,10 @@ export async function POST(req: NextRequest) {
     console.error("Stream API error:", error)
     // In development, return the error message to help debugging.
     const isDev = process.env.NODE_ENV !== "production"
+    const errorMessage =
+      error instanceof Error ? error.message : String(error ?? "Unknown error")
     const body = isDev
-      ? `Stream API error: ${String(
-          (error && (error as any).message) ?? error
-        )}`
+      ? `Stream API error: ${errorMessage}`
       : "Internal server error"
     return new Response(body, { status: 500 })
   }

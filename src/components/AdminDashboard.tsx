@@ -82,10 +82,17 @@ export function AdminDashboard() {
   }, [])
 
   async function updateSettings(roomId: string, settings: RoomSettings) {
+    const { rateLimitMax, rateLimitWindowMs, slowModeMs } = settings
     await fetch("/api/admin/room-settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roomId, ...settings, actor: "admin" }),
+      body: JSON.stringify({
+        roomId,
+        rateLimitMax,
+        rateLimitWindowMs,
+        slowModeMs,
+        actor: "admin",
+      }),
     })
     await loadOverview()
   }

@@ -103,15 +103,32 @@ export async function streamRoomReply(
         (stats.avgResponseMs * stats.totalResponses + responseMs) /
         totalResponses
 
+      const tokenUsage = usage as
+        | {
+            promptTokens?: number
+            completionTokens?: number
+            totalTokens?: number
+            inputTokens?: number
+            outputTokens?: number
+          }
+        | undefined
+
+      const promptTokens =
+        tokenUsage?.promptTokens ?? tokenUsage?.inputTokens ?? 0
+      const completionTokens =
+        tokenUsage?.completionTokens ?? tokenUsage?.outputTokens ?? 0
+      const totalTokens =
+        tokenUsage?.totalTokens ?? promptTokens + completionTokens
+
       updateRoomStats(roomId, {
         assistantMessages: stats.assistantMessages + 1,
         lastResponseMs: responseMs,
         avgResponseMs,
         totalResponses,
         tokenUsage: {
-          prompt: stats.tokenUsage.prompt + (usage?.promptTokens ?? 0),
-          completion: stats.tokenUsage.completion + (usage?.completionTokens ?? 0),
-          total: stats.tokenUsage.total + (usage?.totalTokens ?? 0),
+          prompt: stats.tokenUsage.prompt + promptTokens,
+          completion: stats.tokenUsage.completion + completionTokens,
+          total: stats.tokenUsage.total + totalTokens,
         },
       })
 
@@ -124,9 +141,9 @@ export async function streamRoomReply(
       await broadcastToRoom(roomId, { type: "done" })
 
       console.log("AI Usage:", {
-        promptTokens: usage?.promptTokens,
-        completionTokens: usage?.completionTokens,
-        totalTokens: usage?.totalTokens,
+        promptTokens,
+        completionTokens,
+        totalTokens,
       })
     },
   })

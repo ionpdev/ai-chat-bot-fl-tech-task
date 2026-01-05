@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,6 +22,7 @@ type Message = {
   reactions?: Record<string, string[]>
   attachments?: Attachment[]
   flags?: string[]
+  hidden?: boolean
   status?: "pending" | "sent" | "error"
   localOnly?: boolean
 }
@@ -212,7 +214,9 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
           break
 
         case "message-deleted":
-          setMessages((prev) => prev.filter((message) => message.id !== event.id))
+          setMessages((prev) =>
+            prev.filter((message) => message.id !== event.id)
+          )
           break
 
         case "presence":
@@ -224,7 +228,10 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
     return cleanup
   }, [roomId]) // Removed clientId dependency - use ref instead
 
-  async function sendMessages(outbound: Message[], newAttachments?: Attachment[]) {
+  async function sendMessages(
+    outbound: Message[],
+    newAttachments?: Attachment[]
+  ) {
     setIsLoading(true)
     streamingAccumulator.current = ""
     setStreaming("")
@@ -311,7 +318,9 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
       setMessages((prev) => {
         const lastUserMessage = [...prev]
           .reverse()
-          .find((message) => message.role === "user" && message.status === "pending")
+          .find(
+            (message) => message.role === "user" && message.status === "pending"
+          )
         if (!lastUserMessage) return prev
         return prev.map((message) =>
           message.id === lastUserMessage.id
@@ -436,9 +445,7 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
     }, 500)
   }
 
-  function handleInputKeyDown(
-    event: React.KeyboardEvent<HTMLTextAreaElement>
-  ) {
+  function handleInputKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
       void handleSubmit()
@@ -482,7 +489,7 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
           if (!previewText) {
             previewError = "No text found"
           }
-        } catch (err) {
+        } catch {
           previewError = "Preview failed"
         }
       }
@@ -507,12 +514,11 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
   }
 
   async function extractPdfPreview(file: File) {
-    const pdfjs = await import("pdfjs-dist/legacy/build/pdf")
     const buffer = await file.arrayBuffer()
     const loadingTask = pdfjs.getDocument({
       data: buffer,
-      disableWorker: true,
-    })
+      // pdfjs types don't expose this flag; cast to allow disabling worker.
+    } as unknown as { data: ArrayBuffer; disableWorker: boolean })
     const pdf = await loadingTask.promise
     const maxPages = Math.min(pdf.numPages, 3)
     const chunks: string[] = []
@@ -650,14 +656,13 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
     }
   }, [])
 
-  function handleStop() {
+  const handleStop = useCallback(() => {
     if (!isLoading) return
     stopRequestedRef.current = true
     abortRef.current?.abort()
     abortRef.current = null
 
-    const partial =
-      streamingAccumulator.current || (streaming ? streaming : "")
+    const partial = streamingAccumulator.current || (streaming ? streaming : "")
     if (partial) {
       setMessages((prev) => [
         ...prev,
@@ -675,7 +680,7 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
     streamingAccumulator.current = ""
     setStreaming("")
     setIsLoading(false)
-  }
+  }, [isLoading, streaming])
 
   async function handleRegenerate() {
     if (isLoading) return
@@ -739,32 +744,26 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isLoading, searchQuery])
+  }, [handleStop, isLoading, searchQuery])
 
   const searchParamsString = searchParams.toString()
 
   useEffect(() => {
     const params = new URLSearchParams(searchParamsString)
     const paramsValue = params.get("q") ?? ""
-    if (paramsValue !== searchQuery) {
-      setSearchQuery(paramsValue)
-    }
-
     const roleParam = params.get("role") ?? "all"
-    if (
-      roleParam !== searchRole &&
-      ["all", "user", "assistant"].includes(roleParam)
-    ) {
-      setSearchRole(roleParam as "all" | "user" | "assistant")
-    }
-
     const rangeParam = params.get("range") ?? "all"
-    if (
-      rangeParam !== searchRange &&
-      ["all", "24h", "7d"].includes(rangeParam)
-    ) {
-      setSearchRange(rangeParam as "all" | "24h" | "7d")
-    }
+
+    const nextRole = ["all", "user", "assistant"].includes(roleParam)
+      ? (roleParam as "all" | "user" | "assistant")
+      : "all"
+    const nextRange = ["all", "24h", "7d"].includes(rangeParam)
+      ? (rangeParam as "all" | "24h" | "7d")
+      : "all"
+
+    setSearchQuery((prev) => (prev !== paramsValue ? paramsValue : prev))
+    setSearchRole((prev) => (prev !== nextRole ? nextRole : prev))
+    setSearchRange((prev) => (prev !== nextRange ? nextRange : prev))
   }, [searchParamsString])
 
   useEffect(() => {
@@ -947,7 +946,7 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
     if (!message || message.role !== "user") return
 
     const updated = messages.map((item) =>
-      item.id === messageId ? { ...item, status: "pending" } : item
+      item.id === messageId ? { ...item, status: "pending" as const } : item
     )
     setMessages(updated)
     await sendMessages(updated)
@@ -1163,9 +1162,7 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
               </span>
               <span>{formatPresenceLabel(user)}</span>
               {user.isTyping ? (
-                <span className="text-[0.65rem] text-emerald-500">
-                  typing
-                </span>
+                <span className="text-[0.65rem] text-emerald-500">typing</span>
               ) : (
                 <span className="text-[0.65rem] text-slate-400">
                   {formatPresenceTime(user.lastSeen)}
@@ -1321,10 +1318,7 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
         />
 
         {typingUsers.length > 0 && (
-          <div
-            className="text-xs text-muted-foreground"
-            aria-live="polite"
-          >
+          <div className="text-xs text-muted-foreground" aria-live="polite">
             {typingUsers.join(", ")} typing...
           </div>
         )}

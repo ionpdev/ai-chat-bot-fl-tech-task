@@ -1,12 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
+type StreamTextOptions = {
+  onFinish?: (args: {
+    text: string
+    usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number }
+  }) => Promise<void> | void
+}
+
 // Mock environment
 vi.stubEnv("AI_MODEL", "gemini-2.5-flash-lite")
 vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "test-key")
 
 const saveMessageMock = vi.fn()
 vi.mock("@/lib/db", () => ({
-  saveMessage: (...args: any[]) => saveMessageMock(...args),
+  saveMessage: (...args: unknown[]) => saveMessageMock(...args),
 }))
 
 vi.mock("@ai-sdk/google", () => ({
@@ -15,7 +22,7 @@ vi.mock("@ai-sdk/google", () => ({
 
 // Mock the ai.streamText to provide a controllable textStream and call onFinish
 vi.mock("ai", () => ({
-  streamText: (opts: any) => {
+  streamText: (opts: StreamTextOptions) => {
     const deltas = ["Hello ", "world"]
     const result = {
       textStream: (async function* () {
@@ -67,7 +74,7 @@ describe("streamRoomReply", () => {
     // saveMessage should be called for user and assistant
     expect(saveMessageMock).toHaveBeenCalled()
     const calls = saveMessageMock.mock.calls.map((c) => c[0])
-    const roles = calls.map((c: any) => c.role)
+    const roles = calls.map((c) => (c as { role: string }).role)
     expect(roles).toContain("user")
     expect(roles).toContain("assistant")
   })
