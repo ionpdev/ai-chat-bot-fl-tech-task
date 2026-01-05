@@ -2,9 +2,20 @@
 export type RoomEvent =
   | { type: "token"; delta: string }
   | { type: "done" }
+  | { type: "assistant-message"; id: string; content: string }
   | { type: "typing"; userId: string; isTyping: boolean }
   | { type: "error"; message: string }
-  | { type: "user-message"; id: string; content: string; senderId: string }
+  | {
+      type: "user-message"
+      id: string
+      content: string
+      senderId: string
+      attachments?: any[]
+      flags?: string[]
+    }
+  | { type: "message-updated"; message: any }
+  | { type: "message-deleted"; id: string }
+  | { type: "presence"; users: any[] }
 
 export function connect(roomId: string, onEvent: (event: RoomEvent) => void) {
   const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8787/ws"

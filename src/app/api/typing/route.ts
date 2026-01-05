@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { updateUser } from "@/lib/db"
 
 // Broadcast URL for the standalone WS server
 const BROADCAST_URL =
@@ -18,6 +19,8 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       )
     }
+
+    updateUser({ id: userId, roomId, isTyping })
 
     // Broadcast typing status via WS server's HTTP endpoint
     try {

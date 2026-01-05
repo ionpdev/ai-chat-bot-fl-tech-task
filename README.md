@@ -10,6 +10,14 @@ A full-stack AI chat application with real-time streaming and WebSocket broadcas
 - **Dynamic Chat Rooms** — Create and join rooms via URL (`/room/my-room`)
 - **Typing Indicators** — See when others are typing
 - **Message Persistence** — In-memory storage (easily swappable to database)
+- **Presence + Avatars** — Live presence chips with timestamps
+- **Message Actions** — Edit/delete/retry, pin, reactions, and flagging
+- **Markdown + Code** — Rich formatting, code blocks, copy buttons
+- **Search + Filters** — Keyword search with role/date filters
+- **Attachments** — Image/PDF uploads with previews + extraction
+- **Share + Export** — Read-only share links, export to TXT/MD/JSON
+- **Moderation** — Rate limits, slow mode, spam flags, hide/resolve actions
+- **Analytics** — Per-room response time + token usage
 - **Modern UI** — Built with Tailwind CSS and shadcn/ui components
 
 ## Chat Rooms
@@ -102,6 +110,10 @@ Both users see streaming AI response
 | `token` | AI response token (streaming) |
 | `done` | AI response complete |
 | `typing` | User typing indicator |
+| `assistant-message` | Final assistant reply |
+| `message-updated` | Message edits/pins/reactions/flags |
+| `message-deleted` | Message deleted |
+| `presence` | Presence updates |
 | `error` | Error occurred |
 
 ## Tech Stack
@@ -184,14 +196,22 @@ src/
 │   ├── api/
 │   │   ├── stream/route.ts    # AI streaming endpoint
 │   │   └── typing/route.ts    # Typing indicator endpoint
+│   │   ├── messages/route.ts  # Message edits/pins/reactions/flags
+│   │   ├── presence/route.ts  # Presence heartbeat + list
+│   │   ├── analytics/route.ts # Room analytics
+│   │   └── admin/             # Admin APIs (overview, moderation, settings)
 │   ├── room/
 │   │   └── [roomId]/page.tsx  # Dynamic room page
+│   ├── admin/
+│   │   └── page.tsx           # Admin dashboard
 │   ├── actions.ts             # Server actions (AI streaming)
 │   ├── page.tsx               # Home page with room selector
 │   └── layout.tsx             # Root layout
 ├── components/
 │   ├── Chat.tsx               # Main chat component
 │   ├── MessageList.tsx        # Message display
+│   ├── AdminDashboard.tsx     # Admin UI
+│   ├── RoomDiscovery.tsx      # Room discovery + recents
 │   └── ui/                    # shadcn/ui components
 ├── lib/
 │   ├── db.ts                  # In-memory message store

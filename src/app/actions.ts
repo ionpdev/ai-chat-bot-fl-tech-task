@@ -2,7 +2,8 @@
 
 import { streamText } from "ai"
 import { google } from "@ai-sdk/google"
-import { saveMessage } from "@/lib/db"
+import { getMessage, getRoomStats, saveMessage, updateRoomStats } from "@/lib/db"
+import type { Attachment } from "@/lib/db"
 import { randomUUID } from "crypto"
 
 // Broadcast URL for the standalone WS server
@@ -34,28 +35,43 @@ async function broadcastToRoom(roomId: string, message: object) {
 export async function streamRoomReply(
   roomId: string,
   messages: { role: "user" | "assistant"; content: string }[],
-  senderId?: string
+  senderId?: string,
+  clientMessageId?: string,
+  attachments?: Attachment[],
+  flags?: string[]
 ) {
+  const startedAt = Date.now()
   // Save user message first
   const userMessage = messages[messages.length - 1]
-  const messageId = randomUUID()
+  const messageId = clientMessageId ?? randomUUID()
 
   if (userMessage?.role === "user") {
-    saveMessage({
-      id: messageId,
-      roomId,
-      role: "user",
-      content: userMessage.content,
-      createdAt: Date.now(),
-    })
+    const existing = getMessage(messageId)
+    if (!existing) {
+      saveMessage({
+        id: messageId,
+        roomId,
+        role: "user",
+        content: userMessage.content,
+        createdAt: Date.now(),
+        senderId: senderId ?? "anonymous",
+        attachments,
+        flags,
+      })
 
-    // Broadcast user message to all clients in the room
-    await broadcastToRoom(roomId, {
-      type: "user-message",
-      id: messageId,
-      content: userMessage.content,
-      senderId: senderId ?? "anonymous",
-    })
+      const stats = getRoomStats(roomId)
+      updateRoomStats(roomId, { userMessages: stats.userMessages + 1 })
+
+      // Broadcast user message to all clients in the room
+      await broadcastToRoom(roomId, {
+        type: "user-message",
+        id: messageId,
+        content: userMessage.content,
+        senderId: senderId ?? "anonymous",
+        attachments,
+        flags,
+      })
+    }
   }
 
   // Get model from env or use default
@@ -70,15 +86,41 @@ export async function streamRoomReply(
     messages,
     onFinish: async ({ text, usage }) => {
       // Save assistant response when streaming completes
+      const assistantId = randomUUID()
       saveMessage({
-        id: randomUUID(),
+        id: assistantId,
         roomId,
         role: "assistant",
         content: text,
         createdAt: Date.now(),
+        senderId: "assistant",
+      })
+
+      const stats = getRoomStats(roomId)
+      const responseMs = Date.now() - startedAt
+      const totalResponses = stats.totalResponses + 1
+      const avgResponseMs =
+        (stats.avgResponseMs * stats.totalResponses + responseMs) /
+        totalResponses
+
+      updateRoomStats(roomId, {
+        assistantMessages: stats.assistantMessages + 1,
+        lastResponseMs: responseMs,
+        avgResponseMs,
+        totalResponses,
+        tokenUsage: {
+          prompt: stats.tokenUsage.prompt + (usage?.promptTokens ?? 0),
+          completion: stats.tokenUsage.completion + (usage?.completionTokens ?? 0),
+          total: stats.tokenUsage.total + (usage?.totalTokens ?? 0),
+        },
       })
 
       // Broadcast completion to room
+      await broadcastToRoom(roomId, {
+        type: "assistant-message",
+        id: assistantId,
+        content: text,
+      })
       await broadcastToRoom(roomId, { type: "done" })
 
       console.log("AI Usage:", {

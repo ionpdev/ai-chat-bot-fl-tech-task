@@ -7,8 +7,12 @@ import { parse } from "url"
 export type WSMessage =
   | { type: "token"; delta: string }
   | { type: "done" }
+  | { type: "assistant-message"; id: string; content: string }
   | { type: "typing"; userId: string; isTyping: boolean }
   | { type: "error"; message: string }
+  | { type: "message-updated"; message: object }
+  | { type: "message-deleted"; id: string }
+  | { type: "presence"; users: object[] }
 
 const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   // Handle HTTP requests for broadcasting
