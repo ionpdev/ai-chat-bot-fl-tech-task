@@ -26,9 +26,18 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
   const [streaming, setStreaming] = useState("")
   const [typingUsers, setTypingUsers] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [clientId, setClientId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const debounceRef = useRef<number | undefined>(undefined)
   const streamingAccumulator = useRef("")
+  const wsDoneRef = useRef(false)
+  const clientIdRef = useRef<string | null>(null)
+
+  // Keep clientIdRef in sync with clientId state
+  useEffect(() => {
+    clientIdRef.current = clientId
+  }, [clientId])
 
   // WebSocket connection for real-time updates
   useEffect(() => {
@@ -52,6 +61,7 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
             streamingAccumulator.current = ""
             setStreaming("")
           }
+          wsDoneRef.current = true
           setIsLoading(false)
           break
 
@@ -63,11 +73,33 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
             return next.sort(asc((x) => x))
           })
           break
+
+        case "user-message":
+          // Add message from other users (skip if it's from this client)
+          if (event.senderId !== clientIdRef.current) {
+            setMessages((prev) => {
+              // Avoid duplicates
+              if (prev.some((m) => m.id === event.id)) return prev
+              return [
+                ...prev,
+                {
+                  id: event.id,
+                  role: "user",
+                  content: event.content,
+                },
+              ]
+            })
+            // Another user sent a message, so AI will respond
+            setIsLoading(true)
+            streamingAccumulator.current = ""
+            wsDoneRef.current = false
+          }
+          break
       }
     })
 
     return cleanup
-  }, [roomId])
+  }, [roomId]) // Removed clientId dependency - use ref instead
 
   // Handle form submission
   async function handleSubmit(e: React.FormEvent) {
@@ -80,10 +112,12 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
       content: input.trim(),
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    const outbound = [...messages, userMessage]
+    setMessages(outbound)
     setInput("")
     setIsLoading(true)
     streamingAccumulator.current = ""
+    wsDoneRef.current = false
 
     try {
       const response = await fetch("/api/stream", {
@@ -91,12 +125,14 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId,
-          messages: [...messages, userMessage],
+          messages: outbound,
+          senderId: clientId,
         }),
       })
 
       if (!response.ok) {
-        throw new Error("Failed to send message")
+        const text = await response.text().catch(() => "")
+        throw new Error(text || "Failed to send message")
       }
 
       // Read the streaming response
@@ -110,11 +146,29 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
           if (done) break
 
           localStreaming += decoder.decode(value, { stream: true })
-          setStreaming(localStreaming)
+          // Only update streaming state from HTTP if WS hasn't delivered tokens
+          if (!streamingAccumulator.current) {
+            setStreaming(localStreaming)
+          }
         }
       }
-    } catch (error) {
-      console.error("Error sending message:", error)
+
+      // HTTP-stream fallback: if we received text over HTTP but WS did not
+      if (localStreaming && !wsDoneRef.current) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: localStreaming,
+          },
+        ])
+        setStreaming("")
+        setIsLoading(false)
+      }
+    } catch (err) {
+      console.error("Error sending message:", err)
+      setError(err instanceof Error ? err.message : String(err))
       setIsLoading(false)
     }
   }
@@ -129,7 +183,7 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         roomId,
-        userId: "anonymous",
+        userId: clientId ?? "anonymous",
         isTyping: true,
       }),
     }).catch(console.error)
@@ -142,12 +196,37 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId,
-          userId: "anonymous",
+          userId: clientId ?? "anonymous",
           isTyping: false,
         }),
       }).catch(console.error)
     }, 500)
   }
+
+  // Generate a unique client id per tab/session for message deduplication
+  // Use sessionStorage so each tab gets its own ID (localStorage is shared across tabs)
+  useEffect(() => {
+    try {
+      const key = "chat_session_id"
+      let id = sessionStorage.getItem(key)
+      if (!id) {
+        id = crypto.randomUUID()
+        sessionStorage.setItem(key, id)
+      }
+      setClientId(id)
+    } catch (e) {
+      // sessionStorage may be unavailable in some environments
+      console.log("Error", e)
+      setClientId(crypto.randomUUID())
+    }
+  }, [])
+
+  // Clear typing timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current)
+    }
+  }, [])
 
   return (
     <Card className="w-full max-w-4xl mx-auto">
@@ -167,6 +246,10 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
           messages={messages}
           streamingContent={streaming || undefined}
         />
+
+        {error && (
+          <div className="text-sm text-destructive">Error: {error}</div>
+        )}
 
         <Separator />
 

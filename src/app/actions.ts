@@ -1,111 +1,109 @@
 "use server"
 
 import { streamText } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { google } from "@ai-sdk/google"
 import { saveMessage } from "@/lib/db"
-import { env } from "@/lib/env"
 import { randomUUID } from "crypto"
-import WebSocket from "ws"
 
-// WebSocket client cache for broadcasting
-const wsClients = new Map<string, WebSocket>()
+// Broadcast URL for the standalone WS server
+const BROADCAST_URL =
+  process.env.WS_BROADCAST_URL ?? "http://localhost:8787/broadcast"
 
-function getWS(roomId: string): WebSocket {
-  const existing = wsClients.get(roomId)
-  if (existing && existing.readyState === WebSocket.OPEN) {
-    return existing
+/**
+ * Broadcast a message to a room via the WS server's HTTP endpoint.
+ * This avoids native module issues with the `ws` package in Next.js.
+ */
+async function broadcastToRoom(roomId: string, message: object) {
+  try {
+    await fetch(BROADCAST_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomId, message }),
+    })
+  } catch (err) {
+    console.error("Failed to broadcast to room:", err)
   }
-
-  // Create new WebSocket connection to our server
-  const ws = new WebSocket(`${env.WS_URL}?roomId=${encodeURIComponent(roomId)}`)
-
-  ws.on("open", () => {
-    console.log(`Server connected to WS room: ${roomId}`)
-  })
-
-  ws.on("close", () => {
-    console.log(`Server disconnected from WS room: ${roomId}`)
-    wsClients.delete(roomId)
-  })
-
-  ws.on("error", (error) => {
-    console.error(`Server WS error for room ${roomId}:`, error)
-    wsClients.delete(roomId)
-  })
-
-  wsClients.set(roomId, ws)
-  return ws
 }
 
+/**
+ * Stream AI response for a chat room.
+ *
+ * Uses the Vercel AI SDK with Google's Gemini model.
+ * Broadcasts tokens and completion via the standalone WS server.
+ */
 export async function streamRoomReply(
   roomId: string,
-  messages: { role: "user" | "assistant"; content: string }[]
+  messages: { role: "user" | "assistant"; content: string }[],
+  senderId?: string
 ) {
-  try {
-    // Save user message first
-    const userMessage = messages[messages.length - 1]
-    if (userMessage.role === "user") {
+  // Save user message first
+  const userMessage = messages[messages.length - 1]
+  const messageId = randomUUID()
+
+  if (userMessage?.role === "user") {
+    saveMessage({
+      id: messageId,
+      roomId,
+      role: "user",
+      content: userMessage.content,
+      createdAt: Date.now(),
+    })
+
+    // Broadcast user message to all clients in the room
+    await broadcastToRoom(roomId, {
+      type: "user-message",
+      id: messageId,
+      content: userMessage.content,
+      senderId: senderId ?? "anonymous",
+    })
+  }
+
+  // Get model from env or use default
+  const modelId = process.env.AI_MODEL ?? "gemini-2.5-flash-lite"
+
+  // Create the model instance - SDK reads GOOGLE_GENERATIVE_AI_API_KEY automatically
+  const model = google(modelId)
+
+  // Stream the response
+  const result = streamText({
+    model,
+    messages,
+    onFinish: async ({ text, usage }) => {
+      // Save assistant response when streaming completes
       saveMessage({
         id: randomUUID(),
         roomId,
-        role: "user",
-        content: userMessage.content,
+        role: "assistant",
+        content: text,
         createdAt: Date.now(),
       })
-    }
 
-    // Start streaming from OpenAI
-    const result = await streamText({
-      model: openai("gpt-4o-mini"), // Using mini for cost efficiency
-      messages,
-      onFinish: async ({ text, usage }) => {
-        // Save assistant response
-        saveMessage({
-          id: randomUUID(),
-          roomId,
-          role: "assistant",
-          content: text,
-          createdAt: Date.now(),
-        })
+      // Broadcast completion to room
+      await broadcastToRoom(roomId, { type: "done" })
 
-        // Broadcast completion to room
-        const ws = getWS(roomId)
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "done" }))
-        }
+      console.log("AI Usage:", {
+        promptTokens: usage?.promptTokens,
+        completionTokens: usage?.completionTokens,
+        totalTokens: usage?.totalTokens,
+      })
+    },
+  })
 
-        // Log usage for monitoring
-        console.log("AI Usage:", usage)
-      },
-    })
-
-    // Broadcast tokens to WebSocket room as they arrive
-    ;(async () => {
-      try {
-        for await (const delta of result.textStream) {
-          const ws = getWS(roomId)
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "token", delta }))
-          }
-        }
-      } catch (error) {
-        console.error("Error broadcasting tokens:", error)
-        const ws = getWS(roomId)
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              type: "error",
-              message: "Streaming error occurred",
-            })
-          )
-        }
+  // Broadcast tokens as they arrive (in background)
+  ;(async () => {
+    try {
+      for await (const delta of result.textStream) {
+        await broadcastToRoom(roomId, { type: "token", delta })
       }
-    })()
+    } catch (err) {
+      console.error("Error streaming tokens:", err)
+      await broadcastToRoom(roomId, {
+        type: "error",
+        message: "Streaming error",
+      })
+    }
+  })()
 
-    // Return the stream response for the caller
-    return result.toTextStreamResponse()
-  } catch (error) {
-    console.error("Error in streamRoomReply:", error)
-    throw new Error("Failed to generate AI response")
-  }
+  // Return the streaming response
+  return result.toTextStreamResponse()
 }

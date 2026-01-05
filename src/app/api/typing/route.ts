@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import WebSocket from "ws"
-import { env } from "@/lib/env"
 
+// Broadcast URL for the standalone WS server
+const BROADCAST_URL =
+  process.env.WS_BROADCAST_URL ?? "http://localhost:8787/broadcast"
+
+/**
+ * Typing indicator endpoint.
+ * Broadcasts typing status to the room via the WS server's HTTP endpoint.
+ */
 export async function POST(req: NextRequest) {
   try {
     const { roomId, userId, isTyping } = await req.json()
@@ -13,25 +19,20 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Broadcast typing status via WebSocket
-    const ws = new WebSocket(
-      `${env.WS_URL}?roomId=${encodeURIComponent(roomId)}`
-    )
-
-    ws.on("open", () => {
-      ws.send(
-        JSON.stringify({
-          type: "typing",
-          userId,
-          isTyping,
-        })
-      )
-      ws.close()
-    })
-
-    ws.on("error", (error) => {
-      console.error("Typing API WebSocket error:", error)
-    })
+    // Broadcast typing status via WS server's HTTP endpoint
+    try {
+      await fetch(BROADCAST_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomId,
+          message: { type: "typing", userId, isTyping },
+        }),
+      })
+    } catch (broadcastErr) {
+      console.error("Failed to broadcast typing:", broadcastErr)
+      // Don't fail the request if broadcast fails
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -1,6 +1,6 @@
 // WebSocket server for real-time features
 import { WebSocketServer, WebSocket } from "ws"
-import { createServer } from "http"
+import { createServer, IncomingMessage, ServerResponse } from "http"
 import { parse } from "url"
 
 // Types for WebSocket messages
@@ -10,7 +10,54 @@ export type WSMessage =
   | { type: "typing"; userId: string; isTyping: boolean }
   | { type: "error"; message: string }
 
-const server = createServer()
+const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+  // Handle HTTP requests for broadcasting
+  const { pathname } = parse(req.url || "", true)
+
+  // CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*")
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type")
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204)
+    res.end()
+    return
+  }
+
+  if (pathname === "/broadcast" && req.method === "POST") {
+    let body = ""
+    req.on("data", (chunk) => (body += chunk))
+    req.on("end", () => {
+      try {
+        const { roomId, message } = JSON.parse(body)
+        if (!roomId || !message) {
+          res.writeHead(400, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ error: "roomId and message required" }))
+          return
+        }
+        broadcast(roomId, message)
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ success: true }))
+      } catch (err) {
+        console.error("Broadcast error:", err)
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "Invalid JSON" }))
+      }
+    })
+    return
+  }
+
+  // Health check
+  if (pathname === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ status: "ok", rooms: rooms.size }))
+    return
+  }
+
+  res.writeHead(404)
+  res.end("Not found")
+})
 const wss = new WebSocketServer({ noServer: true })
 
 // Room management
@@ -38,7 +85,7 @@ function joinRoom(roomId: string, ws: WebSocket) {
 }
 
 // Broadcast to all clients in a room
-function broadcast(roomId: string, data: WSMessage | string) {
+function broadcast(roomId: string, data: WSMessage | object | string) {
   const roomClients = rooms.get(roomId)
   if (!roomClients) return
 
@@ -98,6 +145,7 @@ server.on("upgrade", (req, socket, head) => {
 const PORT = process.env.WS_PORT || 8787
 server.listen(PORT, () => {
   console.log(`WebSocket server running on ws://localhost:${PORT}/ws`)
+  console.log(`HTTP broadcast endpoint: http://localhost:${PORT}/broadcast`)
 })
 
 // Export broadcast function for use from Next.js API routes

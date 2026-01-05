@@ -1,12 +1,13 @@
 // Environment configuration helper
-export const env = {
-  OPENAI_API_KEY: process.env.OPENAI_API_KEY!,
-  AI_PROVIDER: process.env.AI_PROVIDER ?? "openai",
-  WS_URL: process.env.WS_URL ?? "ws://localhost:8787/ws",
-  NODE_ENV: process.env.NODE_ENV ?? "development",
-}
+// Note: GOOGLE_GENERATIVE_AI_API_KEY is read directly by @ai-sdk/google
 
-// Validate required environment variables
-if (!env.OPENAI_API_KEY) {
-  throw new Error("Missing OPENAI_API_KEY environment variable")
+export const env = {
+  // WebSocket server URL for real-time features
+  WS_URL: process.env.WS_URL ?? "ws://localhost:8787/ws",
+
+  // AI model to use (defaults to gemini-2.5-flash-lite)
+  AI_MODEL: process.env.AI_MODEL ?? "gemini-2.5-flash-lite",
+
+  // Environment mode
+  NODE_ENV: process.env.NODE_ENV ?? "development",
 }
