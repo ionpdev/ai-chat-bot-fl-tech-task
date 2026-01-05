@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef, useCallback } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -514,6 +513,8 @@ export default function Chat({ roomId, initialMessages }: ChatProps) {
   }
 
   async function extractPdfPreview(file: File) {
+    if (typeof window === "undefined") return ""
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs")
     const buffer = await file.arrayBuffer()
     const loadingTask = pdfjs.getDocument({
       data: buffer,
