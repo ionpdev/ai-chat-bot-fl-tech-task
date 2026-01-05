@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server"
 import { cleanupInactiveUsers, getUsersInRoom, updateUser } from "@/lib/db"
 
-const BROADCAST_URL =
-  process.env.WS_BROADCAST_URL ?? "http://localhost:8787/broadcast"
+const BROADCAST_URL = process.env.WS_BROADCAST_URL ?? ""
 
 async function broadcastToRoom(roomId: string, message: object) {
+  if (!BROADCAST_URL) return
   try {
     await fetch(BROADCAST_URL, {
       method: "POST",

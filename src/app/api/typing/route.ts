@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { updateUser } from "@/lib/db"
 
 // Broadcast URL for the standalone WS server
-const BROADCAST_URL =
-  process.env.WS_BROADCAST_URL ?? "http://localhost:8787/broadcast"
+const BROADCAST_URL = process.env.WS_BROADCAST_URL ?? ""
 
 /**
  * Typing indicator endpoint.
@@ -23,18 +22,20 @@ export async function POST(req: NextRequest) {
     updateUser({ id: userId, roomId, isTyping })
 
     // Broadcast typing status via WS server's HTTP endpoint
-    try {
-      await fetch(BROADCAST_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          roomId,
-          message: { type: "typing", userId, isTyping },
-        }),
-      })
-    } catch (broadcastErr) {
-      console.error("Failed to broadcast typing:", broadcastErr)
-      // Don't fail the request if broadcast fails
+    if (BROADCAST_URL) {
+      try {
+        await fetch(BROADCAST_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomId,
+            message: { type: "typing", userId, isTyping },
+          }),
+        })
+      } catch (broadcastErr) {
+        console.error("Failed to broadcast typing:", broadcastErr)
+        // Don't fail the request if broadcast fails
+      }
     }
 
     return NextResponse.json({ success: true })

@@ -37,7 +37,12 @@ type PresenceUser = {
 type MessageUpdate = Record<string, unknown>
 
 export function connect(roomId: string, onEvent: (event: RoomEvent) => void) {
-  const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8787/ws"
+  const wsUrl =
+    process.env.NEXT_PUBLIC_WS_URL ??
+    (process.env.NODE_ENV === "production" ? "" : "ws://localhost:8787/ws")
+  if (!wsUrl) {
+    return () => {}
+  }
   const url = `${wsUrl}?roomId=${encodeURIComponent(roomId)}`
 
   let ws: WebSocket | null = null

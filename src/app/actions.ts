@@ -7,14 +7,14 @@ import type { Attachment } from "@/lib/db"
 import { randomUUID } from "crypto"
 
 // Broadcast URL for the standalone WS server
-const BROADCAST_URL =
-  process.env.WS_BROADCAST_URL ?? "http://localhost:8787/broadcast"
+const BROADCAST_URL = process.env.WS_BROADCAST_URL ?? ""
 
 /**
  * Broadcast a message to a room via the WS server's HTTP endpoint.
  * This avoids native module issues with the `ws` package in Next.js.
  */
 async function broadcastToRoom(roomId: string, message: object) {
+  if (!BROADCAST_URL) return
   try {
     await fetch(BROADCAST_URL, {
       method: "POST",
