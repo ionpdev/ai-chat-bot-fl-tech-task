@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "chat-rooms",
+  "compatibility_date": "2025-12-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "pages_build_output_dir": ".vercel/output/static",
+  "observability": {
+    "enabled": true
+  }
+}
